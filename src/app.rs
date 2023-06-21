@@ -125,6 +125,7 @@ pub fn App(cx: Scope) -> impl IntoView {
 fn Director(cx: Scope) -> impl IntoView {
     let section_resource = create_resource(cx, || (), |_| async { get_section().await });
     let set_section_action = create_server_action::<SetSection>(cx);
+
     let change_section_type = move |ch| {
         let new_section = (Some(ch), None);
         section_resource.set(Ok(new_section));
@@ -155,6 +156,41 @@ fn Director(cx: Scope) -> impl IntoView {
             Ok(section_string)
         }
     };
+
+    cfg_if! {
+        if #[cfg(not(feature = "ssr"))] {
+            use leptos_dom::helpers::location;
+            use leptos::spawn_local;
+            use futures::StreamExt;
+
+            let socket_stream_result = location().host().map_err(|_| SectionLoadError::LocationHostError)
+                .and_then(|host| {
+                    gloo_net::websocket::futures::WebSocket::open(&format!("ws://{}/ws", host))
+                        .map_err(|err| SectionLoadError::WebSocketOpenError(err.to_string()))
+                    });
+            match socket_stream_result {
+                Ok(mut socket_stream) =>
+                    spawn_local(async move {
+                        loop {
+                            match socket_stream.next().await {
+                                Some(Ok(gloo_net::websocket::Message::Text(message))) => {
+                                    let mut message_chars = message.chars();
+                                    let section_type = message_chars.next();
+                                    let section_number = message_chars.as_str().parse::<NonZeroUsize>().ok();
+                                    section_resource.set(Ok((section_type, section_number)));
+                                },
+                                Some(Err(err)) => {
+                                    warn!("Error receiving message from WebSocket: {}", err);
+                                    break;
+                                }
+                                _ => {}
+                            }
+                        }
+                    }),
+                Err(err) => warn!("{}", err),
+            }
+        }
+    }
 
     view! { cx,
         <div class="director-container">
