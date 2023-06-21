@@ -4,18 +4,21 @@ use cfg_if::cfg_if;
 use leptos::*;
 use leptos_meta::*;
 use leptos_router::*;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 type SectionTuple = (Option<char>, Option<NonZeroUsize>);
 
-#[derive(Clone, Debug, Error)]
-enum SectionSocketError {
+#[derive(Clone, Debug, Error, Serialize, Deserialize)]
+enum SectionLoadError {
     #[error("could not read location host")]
     LocationHostError,
-    #[error("could not open WebSocket ({0})")]
-    WebSocketOpenError(Arc<str>),
-    #[error("error receiving message from WebSocket ({0})")]
-    WebSocketError(Arc<str>),
+    #[error("could not open WebSocket: {0}")]
+    WebSocketOpenError(String),
+    #[error("error receiving message from WebSocket: {0}")]
+    WebSocketError(String),
+    #[error("server fn error: {0}")]
+    ServerError(#[from] ServerFnError),
 }
 
 cfg_if! {
@@ -77,6 +80,11 @@ fn section_segments_to_string(segments: &SectionTuple) -> String {
     }
 }
 
+#[server(GetSection, "/api", "Cbor")]
+async fn get_section() -> Result<SectionTuple, ServerFnError> {
+    Ok(get_section_channel().borrow().clone())
+}
+
 #[server(SetSection, "/api", "Cbor")]
 async fn set_section(section: SectionTuple) -> Result<(), ServerFnError> {
     log::debug!("Update section to {:?}", section);
@@ -121,13 +129,21 @@ fn Director(cx: Scope) -> impl IntoView {
         set_section_type(Some(ch));
         set_section_number(None);
     };
-    let section_display = move || section_segments_to_string(&(section_type(), section_number()));
+    let section_display = move || {
+        let section_string = section_segments_to_string(&(section_type(), section_number()));
+        if section_string.is_empty() {
+            // Zero-width space so that the vertical space is reserved when not displaying anything
+            "\u{200b}".to_string()
+        } else {
+            section_string
+        }
+    };
     let _update_section =
         create_resource(cx, move || (section_type(), section_number()), set_section);
 
     view! { cx,
         <div class="director-container">
-            <div class="section-display">{move || if section_display().is_empty() { "\u{200b}".to_string() } else { section_display() }}</div>
+            <div class="section-display">{section_display}</div>
             <div class="director-buttons">
                 <button on:click=move |_| change_section_type('C')>"C"</button>
                 <button on:click=move |_| change_section_type('V')>"V"</button>
@@ -148,30 +164,44 @@ fn Director(cx: Scope) -> impl IntoView {
 
 #[component]
 fn SectionDisplay(cx: Scope) -> impl IntoView {
+    let section_resource = create_resource(
+        cx,
+        || (),
+        |_| async {
+            Ok::<_, SectionLoadError>(section_segments_to_string(
+                &get_section()
+                    .await
+                    .map_err(|err| SectionLoadError::from(err))?,
+            ))
+        },
+    );
     cfg_if! {
-        if #[cfg(feature = "ssr")] {
-            let (section_string, _) = create_signal(cx, None::<String>);
-        } else {
+        if #[cfg(not(feature = "ssr"))] {
             use leptos_dom::helpers::location;
-            use futures::{future::ready, StreamExt};
+            use leptos::spawn_local;
+            use futures::StreamExt;
 
-            let socket_stream = location().host().map_err(|_| SectionSocketError::LocationHostError)
+            let socket_stream_result = location().host().map_err(|_| SectionLoadError::LocationHostError)
                 .and_then(|host| {
                     gloo_net::websocket::futures::WebSocket::open(&format!("ws://{}/ws", host))
-                        .map_err(|err| SectionSocketError::WebSocketOpenError(Arc::from(err.to_string().as_str())))
+                        .map_err(|err| SectionLoadError::WebSocketOpenError(err.to_string()))
                     });
-            let section_stream_signal = socket_stream.map(|socket| {
-                let s = socket.filter_map(|message_result| ready(match message_result {
-                    Ok(gloo_net::websocket::Message::Text(message)) => Some(Ok(message)),
-                    Err(err) => Some(Err(SectionSocketError::WebSocketError(Arc::from(err.to_string().as_str())))),
-                    _ => None
-                }));
-                create_signal_from_stream(cx, s)
-            });
-            let section_string = section_stream_signal.unwrap_or_else(|err| {
-                let (s, _) = create_signal(cx, Some(Err(err)));
-                s
-            });
+            match socket_stream_result {
+                Ok(mut socket_stream) =>
+                    spawn_local(async move {
+                        loop {
+                            match socket_stream.next().await {
+                                Some(Ok(gloo_net::websocket::Message::Text(message))) => section_resource.set(Ok(message)),
+                                Some(Err(err)) => {
+                                    section_resource.set(Err(SectionLoadError::WebSocketError(err.to_string())));
+                                    break;
+                                }
+                                _ => {}
+                            }
+                        }
+                    }),
+                Err(err) => section_resource.set(Err(err)),
+            }
         }
     }
 
@@ -179,9 +209,9 @@ fn SectionDisplay(cx: Scope) -> impl IntoView {
         <Title text="Song Director - View" />
         <ErrorBoundary
             fallback= move |_, errors| {
-                let errors: Vec<SectionSocketError> = errors()
+                let errors: Vec<SectionLoadError> = errors()
                     .into_iter()
-                    .filter_map(|(_k, v)| v.downcast_ref::<SectionSocketError>().cloned())
+                    .filter_map(|(_k, v)| v.downcast_ref::<SectionLoadError>().cloned())
                     .collect();
                 view! { cx,
                     <h1>{if errors.len() > 1 {"Errors"} else {"Error"}}</h1>
@@ -202,7 +232,11 @@ fn SectionDisplay(cx: Scope) -> impl IntoView {
                 }
             }
         >
-            <div class="section-display">{section_string}</div>
+            <Suspense
+                fallback=|| ()
+            >
+                <div class="section-display">{move || section_resource.read(cx)}</div>
+            </Suspense>
         </ErrorBoundary>
     }
 }

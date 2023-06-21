@@ -35,6 +35,7 @@ cfg_if! {
             let routes = generate_route_list(|cx| view! { cx, <App/> }).await;
 
             // Register server functions
+            let _ = GetSection::register();
             let _ = SetSection::register();
 
             // build our application with a route
