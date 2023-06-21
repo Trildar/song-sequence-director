@@ -1,4 +1,4 @@
-use std::{num::NonZeroUsize, sync::Arc};
+use std::num::NonZeroUsize;
 
 use cfg_if::cfg_if;
 use leptos::*;
@@ -123,27 +123,46 @@ pub fn App(cx: Scope) -> impl IntoView {
 
 #[component]
 fn Director(cx: Scope) -> impl IntoView {
-    let (section_type, set_section_type) = create_signal(cx, None::<char>);
-    let (section_number, set_section_number) = create_signal(cx, None::<NonZeroUsize>);
+    let section_resource = create_resource(cx, || (), |_| async { get_section().await });
+    let set_section_action = create_server_action::<SetSection>(cx);
     let change_section_type = move |ch| {
-        set_section_type(Some(ch));
-        set_section_number(None);
+        let new_section = (Some(ch), None);
+        section_resource.set(Ok(new_section));
+        set_section_action.dispatch(SetSection {
+            section: new_section,
+        });
+    };
+    let set_section_number = move |num| {
+        section_resource.update(|sec| {
+            if let Some(Ok(section)) = sec {
+                section.1 = num;
+            }
+        });
+        let new_section = section_resource.read(cx).unwrap().unwrap();
+        set_section_action.dispatch(SetSection {
+            section: new_section,
+        });
     };
     let section_display = move || {
-        let section_string = section_segments_to_string(&(section_type(), section_number()));
+        let Some(section_segments) = section_resource.read(cx) else {
+            return Ok::<_, ServerFnError>("\u{200b}".to_string());
+        };
+        let section_string = section_segments_to_string(&section_segments?);
         if section_string.is_empty() {
             // Zero-width space so that the vertical space is reserved when not displaying anything
-            "\u{200b}".to_string()
+            Ok("\u{200b}".to_string())
         } else {
-            section_string
+            Ok(section_string)
         }
     };
-    let _update_section =
-        create_resource(cx, move || (section_type(), section_number()), set_section);
 
     view! { cx,
         <div class="director-container">
-            <div class="section-display">{section_display}</div>
+            <Suspense
+                fallback=|| ()
+            >
+                <div class="section-display">{section_display}</div>
+            </Suspense>
             <div class="director-buttons">
                 <button on:click=move |_| change_section_type('C')>"C"</button>
                 <button on:click=move |_| change_section_type('V')>"V"</button>
