@@ -6,8 +6,6 @@ use leptos_meta::*;
 use leptos_router::*;
 use thiserror::Error;
 
-use crate::error_template::ErrorTemplate;
-
 type SectionTuple = (Option<char>, Option<NonZeroUsize>);
 
 #[derive(Clone, Debug, Error)]
@@ -120,21 +118,31 @@ fn Director(cx: Scope) -> impl IntoView {
     let (section_type, set_section_type) = create_signal(cx, None::<char>);
     let (section_number, set_section_number) = create_signal(cx, None::<NonZeroUsize>);
     let change_section_type = move |ch| {
-        cx.batch(|| {
-            set_section_type(Some(ch));
-            set_section_number(None);
-        });
+        set_section_type(Some(ch));
+        set_section_number(None);
     };
     let section_display = move || section_segments_to_string(&(section_type(), section_number()));
     let _update_section =
         create_resource(cx, move || (section_type(), section_number()), set_section);
 
     view! { cx,
-        <div class="section-display">{section_display}</div>
-        <button on:click=move |_| change_section_type('C')>"C"</button>
-        <button on:click=move |_| change_section_type('V')>"V"</button>
-        <button on:click=move |_| set_section_number(NonZeroUsize::new(1))>"1"</button>
-        <button on:click=move |_| set_section_number(NonZeroUsize::new(2))>"2"</button>
+        <div class="director-container">
+            <div class="section-display">{move || if section_display().is_empty() { "\u{200b}".to_string() } else { section_display() }}</div>
+            <div class="director-buttons">
+                <button on:click=move |_| change_section_type('C')>"C"</button>
+                <button on:click=move |_| change_section_type('V')>"V"</button>
+                <button on:click=move |_| change_section_type('B')>"B"</button>
+                <button on:click=move |_| change_section_type('W')>"W"</button>
+                <button on:click=move |_| change_section_type('E')>"E"</button>
+                <button on:click=move |_| change_section_type('X')>"X"</button>
+                <button on:click=move |_| set_section_number(NonZeroUsize::new(1))>"1"</button>
+                <button on:click=move |_| set_section_number(NonZeroUsize::new(2))>"2"</button>
+                <button on:click=move |_| set_section_number(NonZeroUsize::new(3))>"3"</button>
+                <button on:click=move |_| set_section_number(NonZeroUsize::new(4))>"4"</button>
+                <button on:click=move |_| set_section_number(NonZeroUsize::new(5))>"5"</button>
+                <button on:click=move |_| set_section_number(NonZeroUsize::new(6))>"6"</button>
+            </div>
+        </div>
     }
 }
 

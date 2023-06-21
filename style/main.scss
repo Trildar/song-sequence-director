@@ -1,8 +1,45 @@
+* {
+	box-sizing: border-box;
+}
+
+body,
+html {
+	margin: 0;
+	padding: 0;
+}
+
 body {
 	font-family: sans-serif;
 	text-align: center;
 }
 
 .section-display {
-	font-size: 32pt;
+	font-size: 3rem;
+	margin-bottom: 1rem;
+}
+
+.director-container {
+	display: flex;
+	flex-direction: column;
+	height: 100vh;
+	padding: 0.5rem;
+}
+
+.director-buttons {
+	display: grid;
+	grid-auto-flow: row;
+	grid-template-columns: repeat(6, 1fr);
+	gap: 1rem;
+	flex: 1;
+
+	button {
+		font-size: 3rem;
+	}
+}
+
+@media (orientation: portrait) {
+	.director-buttons {
+		grid-auto-flow: column;
+		grid-template: repeat(6, 1fr) / auto;
+	}
 }
