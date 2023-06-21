@@ -10,7 +10,6 @@ use crate::error_template::ErrorTemplate;
 
 type SectionTuple = (Option<char>, Option<NonZeroUsize>);
 
-#[cfg(not(feature = "ssr"))]
 #[derive(Clone, Debug, Error)]
 enum SectionSocketError {
     #[error("could not read location host")]
@@ -131,8 +130,7 @@ fn Director(cx: Scope) -> impl IntoView {
         create_resource(cx, move || (section_type(), section_number()), set_section);
 
     view! { cx,
-        <h1>"Welcome to Leptos!"</h1>
-        <h2>{section_display}</h2>
+        <div class="section-display">{section_display}</div>
         <button on:click=move |_| change_section_type('C')>"C"</button>
         <button on:click=move |_| change_section_type('V')>"V"</button>
         <button on:click=move |_| set_section_number(NonZeroUsize::new(1))>"1"</button>
@@ -170,10 +168,33 @@ fn SectionDisplay(cx: Scope) -> impl IntoView {
     }
 
     view! { cx,
+        <Title text="Song Director - View" />
         <ErrorBoundary
-            fallback=move |_, errors| view! {cx, <ErrorTemplate errors=errors/>}
+            fallback= move |_, errors| {
+                let errors: Vec<SectionSocketError> = errors()
+                    .into_iter()
+                    .filter_map(|(_k, v)| v.downcast_ref::<SectionSocketError>().cloned())
+                    .collect();
+                view! { cx,
+                    <h1>{if errors.len() > 1 {"Errors"} else {"Error"}}</h1>
+                    <For
+                        // a function that returns the items we're iterating over; a signal is fine
+                        each= move || {errors.clone().into_iter().enumerate()}
+                        // a unique key for each item as a reference
+                        key=|(index, _error)| *index
+                        // renders each item to a view
+                        view= move |cx, error| {
+                            let error_string = error.1.to_string();
+                            view! {
+                                cx,
+                                <p>"Error: " {error_string}</p>
+                            }
+                        }
+                    />
+                }
+            }
         >
-        <span>{section_string}</span>
+            <div class="section-display">{section_string}</div>
         </ErrorBoundary>
     }
 }
