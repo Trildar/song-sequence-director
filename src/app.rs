@@ -133,6 +133,13 @@ fn Director(cx: Scope) -> impl IntoView {
             section: new_section,
         });
     };
+    let clear_section = move || {
+        let new_section = (None, None);
+        section_resource.set(Ok(new_section));
+        set_section_action.dispatch(SetSection {
+            section: new_section,
+        });
+    };
     let set_section_number = move |num| {
         section_resource.update(|sec| {
             if let Some(Ok(section)) = sec {
@@ -211,7 +218,7 @@ fn Director(cx: Scope) -> impl IntoView {
                 <button on:click=move |_| set_section_number(NonZeroUsize::new(3))>"3"</button>
                 <button on:click=move |_| set_section_number(NonZeroUsize::new(4))>"4"</button>
                 <button on:click=move |_| set_section_number(NonZeroUsize::new(5))>"5"</button>
-                <button on:click=move |_| set_section_number(NonZeroUsize::new(6))>"6"</button>
+                <button on:click=move |_| clear_section()>"-"</button>
             </div>
         </div>
     }
