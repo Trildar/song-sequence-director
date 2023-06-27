@@ -1,12 +1,12 @@
-use std::net::SocketAddr;
-
-use axum::response::IntoResponse;
 use cfg_if::cfg_if;
-use song_sequence_director::app::section_socket;
 
 cfg_if! {
     if #[cfg(feature = "ssr")] {
         use axum::extract::{ConnectInfo, WebSocketUpgrade};
+        use axum::response::IntoResponse;
+        use song_sequence_director::app::section_socket;
+
+        use std::net::SocketAddr;
 
         #[tokio::main]
         async fn main() {
@@ -49,7 +49,7 @@ cfg_if! {
 
             // run our app with hyper
             // `axum::Server` is a re-export of `hyper::Server`
-            log!("listening on http://{}", &addr);
+            log!("song director server v{} listening on http://{}", env!("CARGO_PKG_VERSION"), &addr);
             axum::Server::bind(&addr)
                 .serve(app.into_make_service_with_connect_info::<SocketAddr>())
                 .await
