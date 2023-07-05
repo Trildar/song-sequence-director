@@ -5,22 +5,21 @@ cfg_if! {
         use axum::extract::{ConnectInfo, WebSocketUpgrade};
         use axum::response::IntoResponse;
         use song_sequence_director::app::section_socket;
+        use tower_http::compression::CompressionLayer;
 
         use std::net::SocketAddr;
 
         #[tokio::main]
         async fn main() {
             use axum::{
-                extract::Extension,
                 routing::{get, post},
                 Router,
             };
             use leptos::*;
             use leptos_axum::{generate_route_list, LeptosRoutes};
             use song_sequence_director::app::*;
-            use song_sequence_director::fileserv::file_and_error_handler;
+            use song_sequence_director::fileserv::get_file_and_error_service;
             use std::net::SocketAddr;
-            use std::sync::Arc;
 
             simple_logger::init_with_level(log::Level::Debug).expect("couldn't initialize logging");
 
@@ -43,8 +42,8 @@ cfg_if! {
                 .route("/ws", get(ws_handler))
                 .route("/api/*fn_name", post(leptos_axum::handle_server_fns))
                 .leptos_routes(leptos_options.clone(), routes, |cx| view! { cx, <App/> })
-                .fallback(file_and_error_handler)
-                .layer(Extension(Arc::new(leptos_options)));
+                .layer(CompressionLayer::new())
+                .fallback_service(get_file_and_error_service(&leptos_options));
 
             // run our app with hyper
             // `axum::Server` is a re-export of `hyper::Server`
