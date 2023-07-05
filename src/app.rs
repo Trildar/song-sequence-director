@@ -210,6 +210,7 @@ fn Director(cx: Scope) -> impl IntoView {
                 <button on:click=move |_| change_section_type('C')>"C"</button>
                 <button on:click=move |_| change_section_type('V')>"V"</button>
                 <button on:click=move |_| change_section_type('B')>"B"</button>
+                <button on:click=move |_| change_section_type('P')>"P"</button>
                 <button on:click=move |_| change_section_type('W')>"W"</button>
                 <button on:click=move |_| change_section_type('E')>"E"</button>
                 <button on:click=move |_| change_section_type('X')>"X"</button>
@@ -218,6 +219,7 @@ fn Director(cx: Scope) -> impl IntoView {
                 <button on:click=move |_| set_section_number(NonZeroUsize::new(3))>"3"</button>
                 <button on:click=move |_| set_section_number(NonZeroUsize::new(4))>"4"</button>
                 <button on:click=move |_| set_section_number(NonZeroUsize::new(5))>"5"</button>
+                <button on:click=move |_| change_section_type('R')>"R"</button>
                 <button on:click=move |_| clear_section()>"-"</button>
             </div>
         </div>

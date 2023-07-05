@@ -28,7 +28,7 @@ body {
 .director-buttons {
 	display: grid;
 	grid-auto-flow: row;
-	grid-template-columns: repeat(6, 1fr);
+	grid-template-columns: repeat(7, 1fr);
 	gap: 1rem;
 	flex: 1;
 
@@ -40,6 +40,6 @@ body {
 @media (orientation: portrait) {
 	.director-buttons {
 		grid-auto-flow: column;
-		grid-template: repeat(6, 1fr) / auto;
+		grid-template: repeat(7, 1fr) / auto;
 	}
 }
