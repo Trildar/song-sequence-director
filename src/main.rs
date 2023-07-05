@@ -41,7 +41,6 @@ cfg_if! {
             // build our application with a route
             let app = Router::new()
                 .route("/ws", get(ws_handler))
-                .route("/test", get(|| async {"Hellow world".to_string()}))
                 .route("/api/*fn_name", post(leptos_axum::handle_server_fns))
                 .leptos_routes(leptos_options.clone(), routes, |cx| view! { cx, <App/> })
                 .fallback(file_and_error_handler)
