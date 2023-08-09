@@ -2,12 +2,17 @@ use cfg_if::cfg_if;
 
 cfg_if! {
     if #[cfg(feature = "ssr")] {
-        use axum::extract::{ConnectInfo, WebSocketUpgrade};
-        use axum::response::IntoResponse;
-        use song_sequence_director::app::section_socket;
-        use tower_http::compression::CompressionLayer;
-
         use std::net::SocketAddr;
+        use std::sync::Arc;
+
+        use axum::extract::{ConnectInfo, Path, RawQuery, State, WebSocketUpgrade};
+        use axum::response::{Response, IntoResponse};
+        use axum::body::Body as AxumBody;
+        use http::{HeaderMap, Request};
+        use leptos::{provide_context, view};
+        use leptos_axum::handle_server_fns_with_context;
+        use song_sequence_director::app::{App, AppState, SectionTuple, section_socket};
+        use tower_http::compression::CompressionLayer;
 
         #[tokio::main]
         async fn main() {
@@ -33,15 +38,19 @@ cfg_if! {
             let addr = leptos_options.site_addr;
             let routes = generate_route_list(|cx| view! { cx, <App/> }).await;
 
-            // Register server functions
-            let _ = GetSection::register();
-            let _ = SetSection::register();
+            let (section_tx, section_rx) = tokio::sync::watch::channel((None, None));
+            let app_state = AppState {
+                leptos_options: leptos_options.clone(),
+                section_tx: Arc::new(section_tx),
+                section_rx
+            };
 
             // build our application with a route
             let app = Router::new()
                 .route("/ws", get(ws_handler))
-                .route("/api/*fn_name", post(leptos_axum::handle_server_fns))
-                .leptos_routes(leptos_options.clone(), routes, |cx| view! { cx, <App/> })
+                .route("/api/*fn_name", post(server_fn_handler))
+                .leptos_routes_with_handler(routes, get(leptos_routes_handler))
+                .with_state(app_state)
                 .layer(CompressionLayer::new())
                 .fallback_service(get_file_and_error_service(&leptos_options));
 
@@ -54,8 +63,24 @@ cfg_if! {
                 .unwrap();
         }
 
-        async fn ws_handler(ws: WebSocketUpgrade, ConnectInfo(socket_addr): ConnectInfo<SocketAddr>) -> impl IntoResponse {
-            ws.on_upgrade(move |socket| section_socket(socket, socket_addr))
+        async fn server_fn_handler(State(app_state): State<AppState>, path: Path<String>, headers: HeaderMap, raw_query: RawQuery, request: Request<AxumBody>) -> impl IntoResponse {
+            handle_server_fns_with_context(path, headers, raw_query, move |cx| {
+                provide_context(cx, app_state.section_tx.clone());
+                provide_context(cx, app_state.section_rx.clone());
+            }, request).await
+        }
+
+        async fn leptos_routes_handler(State(app_state): State<AppState>, req: Request<AxumBody>) -> Response {
+            let handler = leptos_axum::render_app_to_stream_with_context(app_state.leptos_options.clone(), move |cx| {
+                provide_context(cx, app_state.section_tx.clone());
+                provide_context(cx, app_state.section_rx.clone());
+            }, |cx| view! { cx, <App/> });
+
+            handler(req).await.into_response()
+        }
+
+        async fn ws_handler(State(section_rx): State<tokio::sync::watch::Receiver<SectionTuple>>, ws: WebSocketUpgrade, ConnectInfo(socket_addr): ConnectInfo<SocketAddr>) -> impl IntoResponse {
+            ws.on_upgrade(move |socket| section_socket(socket, section_rx, socket_addr))
         }
     }
 }

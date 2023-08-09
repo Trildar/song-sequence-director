@@ -7,7 +7,7 @@ use leptos_router::*;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-type SectionTuple = (Option<char>, Option<NonZeroUsize>);
+pub type SectionTuple = (Option<char>, Option<NonZeroUsize>);
 
 #[derive(Clone, Debug, Error, Serialize, Deserialize)]
 enum SectionLoadError {
@@ -18,32 +18,34 @@ enum SectionLoadError {
     #[error("error receiving message from WebSocket: {0}")]
     WebSocketError(String),
     #[error("server fn error: {0}")]
-    ServerError(#[from] ServerFnError),
+    ServerError(#[from] ServerFnErrorErr),
 }
 
 cfg_if! {
     if #[cfg(feature = "ssr")] {
         use std::net::SocketAddr;
-        use std::sync::OnceLock;
+        use std::sync::Arc;
 
         use axum::extract::ws::{self, WebSocket};
+        use axum::extract::FromRef;
         use futures::StreamExt;
 
-        static SECTION_CHANNEL: OnceLock<tokio::sync::watch::Sender<SectionTuple>> = OnceLock::new();
-
-        fn get_section_channel() -> &'static tokio::sync::watch::Sender<SectionTuple> {
-            SECTION_CHANNEL.get_or_init(|| tokio::sync::watch::channel((None, None)).0)
+        #[derive(FromRef, Clone)]
+        pub struct AppState {
+            pub leptos_options: LeptosOptions,
+            pub section_tx: Arc<tokio::sync::watch::Sender<SectionTuple>>,
+            pub section_rx: tokio::sync::watch::Receiver<SectionTuple>,
         }
 
-        pub async fn section_socket(mut socket: WebSocket, socket_addr: SocketAddr) {
-            let mut section_rx = get_section_channel().subscribe();
+        fn get_section_tx(cx: Scope) -> Result<Arc<tokio::sync::watch::Sender<SectionTuple>>, ServerFnError> {
+            use_context::<Arc<tokio::sync::watch::Sender<SectionTuple>>>(cx).ok_or_else(|| ServerFnError::ServerError("Section TX missing".to_string()))
+        }
 
-            let message = section_segments_to_string(&section_rx.borrow());
-            log::debug!("Sending {}", message);
-            if let Err(err) = socket.send(ws::Message::Text(message)).await {
-                log::warn!("Error sending to {}: {}", socket_addr, err);
-                return;
-            }
+        fn get_section_rx(cx: Scope) -> Result<tokio::sync::watch::Receiver<SectionTuple>, ServerFnError> {
+            use_context::<tokio::sync::watch::Receiver<SectionTuple>>(cx).ok_or_else(|| ServerFnError::ServerError("Section RX missing".to_string()))
+        }
+
+        pub async fn section_socket(mut socket: WebSocket, mut section_rx: tokio::sync::watch::Receiver<SectionTuple>, socket_addr: SocketAddr) {
             loop {
                 tokio::select! {
                     changed = section_rx.changed() => if changed.is_ok() {
@@ -54,7 +56,7 @@ cfg_if! {
                             return;
                         }
                     } else {
-                        // SECTION_CHANNEL has closed. Should never actually happen
+                        // Channel has closed. Should never actually happen
                         let _ = socket.close().await;
                         return;
                     },
@@ -81,14 +83,14 @@ fn section_segments_to_string(segments: &SectionTuple) -> String {
 }
 
 #[server(GetSection, "/api", "Cbor")]
-async fn get_section() -> Result<SectionTuple, ServerFnError> {
-    Ok(get_section_channel().borrow().clone())
+async fn get_section(cx: Scope) -> Result<SectionTuple, ServerFnError> {
+    Ok(get_section_rx(cx)?.borrow().clone())
 }
 
 #[server(SetSection, "/api", "Cbor")]
-async fn set_section(section: SectionTuple) -> Result<(), ServerFnError> {
+async fn set_section(cx: Scope, section: SectionTuple) -> Result<(), ServerFnError> {
     log::debug!("Update section to {:?}", section);
-    let tx = get_section_channel();
+    let tx = get_section_tx(cx)?;
     tx.send_modify(|s| *s = section);
 
     Ok(())
@@ -123,7 +125,7 @@ pub fn App(cx: Scope) -> impl IntoView {
 
 #[component]
 fn Director(cx: Scope) -> impl IntoView {
-    let section_resource = create_resource(cx, || (), |_| async { get_section().await });
+    let section_resource = create_resource(cx, || (), move |_| get_section(cx));
     let set_section_action = create_server_action::<SetSection>(cx);
 
     let change_section_type = move |ch| {
@@ -231,11 +233,11 @@ fn SectionDisplay(cx: Scope) -> impl IntoView {
     let section_resource = create_resource(
         cx,
         || (),
-        |_| async {
+        move |_| async move {
             Ok::<_, SectionLoadError>(section_segments_to_string(
-                &get_section()
+                &get_section(cx)
                     .await
-                    .map_err(|err| SectionLoadError::from(err))?,
+                    .map_err(|err| SectionLoadError::from(ServerFnErrorErr::from(err)))?,
             ))
         },
     );
