@@ -204,7 +204,7 @@ fn Director(cx: Scope) -> impl IntoView {
     view! { cx,
         <div class="director-container">
             <Suspense
-                fallback=|| ()
+                fallback= move || view! { cx, <div class="section-display">"\u{200b}"</div>}
             >
                 <div class="section-display">{section_display}</div>
             </Suspense>
@@ -274,7 +274,7 @@ fn SectionDisplay(cx: Scope) -> impl IntoView {
     view! { cx,
         <Title text="Song Director - View" />
         <Suspense
-            fallback=|| ()
+            fallback= move || view! { cx, <div class="section-display">"\u{200b}"</div>}
         >
             <ErrorBoundary
                 fallback= move |cx, errors| {
