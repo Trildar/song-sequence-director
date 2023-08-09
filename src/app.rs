@@ -17,7 +17,7 @@ enum SectionLoadError {
     WebSocketOpenError(String),
     #[error("error receiving message from WebSocket: {0}")]
     WebSocketError(String),
-    #[error("server fn error: {0}")]
+    #[error("server error: {0}")]
     ServerError(#[from] ServerFnErrorErr),
 }
 
