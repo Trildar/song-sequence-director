@@ -273,36 +273,36 @@ fn SectionDisplay(cx: Scope) -> impl IntoView {
 
     view! { cx,
         <Title text="Song Director - View" />
-        <ErrorBoundary
-            fallback= move |_, errors| {
-                let errors: Vec<SectionLoadError> = errors()
-                    .into_iter()
-                    .filter_map(|(_k, v)| v.downcast_ref::<SectionLoadError>().cloned())
-                    .collect();
-                view! { cx,
-                    <h1>{if errors.len() > 1 {"Errors"} else {"Error"}}</h1>
-                    <For
-                        // a function that returns the items we're iterating over; a signal is fine
-                        each= move || {errors.clone().into_iter().enumerate()}
-                        // a unique key for each item as a reference
-                        key=|(index, _error)| *index
-                        // renders each item to a view
-                        view= move |cx, error| {
-                            let error_string = error.1.to_string();
-                            view! {
-                                cx,
-                                <p>"Error: " {error_string}</p>
-                            }
-                        }
-                    />
-                }
-            }
+        <Suspense
+            fallback=|| ()
         >
-            <Suspense
-                fallback=|| ()
+            <ErrorBoundary
+                fallback= move |cx, errors| {
+                    let errors: Vec<leptos::error::Error> = errors()
+                        .into_iter()
+                        .map(|(_, v)| v)
+                        .collect();
+                    view! { cx,
+                        <h1>{if errors.len() > 1 {"Errors"} else {"Error"}}</h1>
+                        <For
+                            // a function that returns the items we're iterating over; a signal is fine
+                            each= move || {errors.clone().into_iter().enumerate()}
+                            // a unique key for each item as a reference
+                            key=|(index, _error)| *index
+                            // renders each item to a view
+                            view= move |cx, error| {
+                                let error_string = error.1.to_string();
+                                view! {
+                                    cx,
+                                    <p>{error_string}</p>
+                                }
+                            }
+                        />
+                    }
+                }
             >
                 <div class="section-display">{move || section_resource.read(cx)}</div>
-            </Suspense>
-        </ErrorBoundary>
+            </ErrorBoundary>
+        </Suspense>
     }
 }
