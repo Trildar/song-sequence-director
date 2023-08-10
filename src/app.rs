@@ -111,6 +111,8 @@ pub fn App(cx: Scope) -> impl IntoView {
         // sets the document title
         <Title text="Song Director"/>
 
+        <Link rel="icon" type_="image/png" href="/favicon.png"/>
+
         // content for this welcome page
         <Router>
             <main>
